@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elasticsearch Transistor Defect Tracker</title>
+  <style>
+    :root {
+      --es-blue:   #1558d6;
+      --es-teal:   #00bfb3;
+      --es-dark:   #1558d6;
+      --es-card:   #1a65e8;
+      --es-border: #2d74f0;
+      --ok-green:  #00d68f;
+      --ko-red:    #ff4757;
+      --text:      #ffffff;
+      --muted:     #a8c4f5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--es-dark);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    /* ── circuit-board grid background ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    .page { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; }
+
+    /* ── header ── */
+    header {
+      display: flex; align-items: center; gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .logo-row { flex-shrink: 0; }
+
+    .header-text { text-align: left; }
+    h1 {
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: .9rem;
+      margin-top: .4rem;
+      letter-spacing: .04em;
+    }
+
+    /* ── drop zone ── */
+    .drop-zone {
+      border: 2px dashed var(--es-teal);
+      border-radius: 1.2rem;
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: background .2s, border-color .2s;
+      background: rgba(255,255,255,.06);
+      margin-bottom: 2rem;
+    }
+    .drop-zone.dragover,
+    .drop-zone:hover {
+      background: rgba(255,255,255,.12);
+      border-color: #fff;
+    }
+    .drop-zone .drop-icon { margin-bottom: .75rem; display: block; line-height: 1; }
+    .drop-zone .drop-icon img { filter: drop-shadow(0 0 8px rgba(0,191,179,.5)); transition: filter .2s; }
+    .drop-zone:hover .drop-icon img { filter: drop-shadow(0 0 16px rgba(0,191,179,.9)); }
+    .drop-zone p { color: var(--muted); font-size: .95rem; }
+    .drop-zone strong { color: var(--text); }
+    #file-input { display: none; }
+
+    /* ── analyse button ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: linear-gradient(135deg, var(--es-teal), var(--es-blue));
+      color: #fff; font-weight: 700; font-size: 1rem;
+      padding: .75rem 2rem; border: none; border-radius: .75rem;
+      cursor: pointer; transition: opacity .2s, transform .15s;
+      box-shadow: 0 0 20px rgba(0,191,179,.3);
+    }
+    .btn:hover  { opacity: .9; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    .controls { text-align: center; margin-bottom: 2.5rem; }
+
+    /* ── spinner ── */
+    .spinner {
+      display: inline-block; width: 1.1rem; height: 1.1rem;
+      border: 3px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── result card ── */
+    .result-card {
+      background: var(--es-card);
+      border: 1px solid var(--es-border);
+      border-radius: 1.2rem;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .result-card.ko { border-color: var(--ko-red);  box-shadow: 0 0 24px rgba(255,71,87,.25); }
+    .result-card.ok { border-color: var(--ok-green); box-shadow: 0 0 24px rgba(0,214,143,.2); }
+
+    .verdict-row {
+      display: flex; align-items: center; gap: 1.2rem;
+      margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .verdict-badge {
+      font-size: 1.6rem; font-weight: 900; letter-spacing: .12em;
+      padding: .45rem 1.4rem; border-radius: .6rem;
+    }
+    .verdict-badge.ko { background: rgba(255,71,87,.2);  color: var(--ko-red);  border: 2px solid var(--ko-red); }
+    .verdict-badge.ok { background: rgba(0,214,143,.15); color: var(--ok-green); border: 2px solid var(--ok-green); }
+
+    .verdict-label { color: var(--text); font-size: 1.4rem; font-weight: 700; }
+
+    .defects-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+    .defect-chip {
+      background: rgba(255,71,87,.15); color: var(--ko-red);
+      border: 1px solid rgba(255,71,87,.4);
+      font-size: .78rem; font-weight: 700;
+      padding: .25rem .75rem; border-radius: 999px;
+      letter-spacing: .05em; text-transform: uppercase;
+    }
+
+    /* ── neighbours ── */
+    details { margin-bottom: .75rem; }
+    summary {
+      cursor: pointer; font-weight: 600; font-size: .85rem;
+      color: #ffffff; padding: .5rem 0;
+      list-style: none; user-select: none;
+    }
+    summary::before { content: '▶  '; font-size: .7rem; }
+    details[open] summary::before { content: '▼  '; }
+
+    .neighbour-list { margin-top: .5rem; }
+    .neighbour-row {
+      display: flex; align-items: center; gap: .6rem;
+      padding: .45rem .6rem; border-radius: .5rem;
+      font-size: .82rem;
+    }
+    .neighbour-row:nth-child(odd) { background: rgba(255,255,255,.05); }
+    .star { color: var(--ko-red); font-size: .9rem; min-width: 1rem; }
+    .nb-label {
+      font-size: .7rem; font-weight: 700; letter-spacing: .05em;
+      text-transform: uppercase;
+      background: rgba(255,255,255,.1); border-radius: .3rem;
+      padding: .15rem .45rem; white-space: nowrap;
+    }
+    .nb-file { flex: 1; color: #ffffff; word-break: break-all; }
+    .nb-score { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+    .nb-thumb {
+      width: 44px; height: 44px; object-fit: cover;
+      border-radius: .4rem; border: 1px solid rgba(255,255,255,.2);
+      flex-shrink: 0; cursor: zoom-in;
+      transition: transform .15s, border-color .15s;
+    }
+    .nb-thumb:hover { transform: scale(1.08); border-color: var(--es-teal); }
+
+    /* ── image preview inside drop zone ── */
+    #preview-img {
+      display: none;
+      max-height: 220px; max-width: 100%; border-radius: .75rem;
+      border: 2px solid var(--es-border);
+    }
+    .drop-zone.has-image .drop-icon,
+    .drop-zone.has-image > p { display: none; }
+    .drop-zone.has-image { padding: .75rem; }
+    .drop-zone.has-image #preview-img { display: block; margin: 0 auto; }
+
+    /* ── error ── */
+    .error-card {
+      background: rgba(255,71,87,.12);
+      border: 1px solid rgba(255,71,87,.5);
+      border-radius: .9rem; padding: 1rem 1.5rem;
+      color: var(--ko-red); font-size: .9rem;
+    }
+
+    footer {
+      text-align: center; margin-top: 3rem;
+      font-size: .75rem; color: var(--muted);
+    }
+    footer span { color: var(--es-teal); }
+
+    /* ── lightbox ── */
+    #lightbox {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.85); backdrop-filter: blur(6px);
+      align-items: center; justify-content: center; cursor: zoom-out;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img {
+      max-width: 90vw; max-height: 90vh;
+      border-radius: .75rem;
+      border: 2px solid var(--es-border);
+      box-shadow: 0 0 60px rgba(0,0,0,.8);
+      cursor: default;
+    }
+    #lightbox-close {
+      position: absolute; top: 1.2rem; right: 1.5rem;
+      background: none; border: none; color: #fff;
+      font-size: 2rem; cursor: pointer; line-height: 1;
+      opacity: .7; transition: opacity .15s;
+    }
+    #lightbox-close:hover { opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="logo-row">
+      <img src="/static/elastic_logo.png" alt="Elastic User Group France" style="height:90px; border-radius:.75rem;" />
+    </div>
+    <div class="header-text">
+      <h1>Elasticsearch Transistor Defect Tracker</h1>
+      <p class="subtitle">Visual KO/OK inspection powered by vector search &amp; image embeddings</p>
+    </div>
+  </header>
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="drop-zone">
+    <span class="drop-icon">
+      <img src="/static/transistor.png" alt="transistor" style="height:72px; width:auto;" />
+    </span>
+    <p><strong>Drag &amp; drop</strong> a transistor image here</p>
+    <p style="margin-top:.4rem">or <strong>click</strong> to browse</p>
+    <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.bmp,.webp" />
+    <img id="preview-img" alt="Preview" />
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="analyse-btn" disabled>
+      <span>⚡</span> Analyse
+    </button>
+  </div>
+
+  <div id="result-area"></div>
+
+  <footer>
+    Powered by <span>Elasticsearch</span> · Vector search for visual quality control
+  </footer>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button id="lightbox-close" title="Close">✕</button>
+  <img id="lightbox-img" src="" alt="Zoom" />
+</div>
+
+<script>
+  // ── lightbox ──
+  const lightbox     = document.getElementById('lightbox');
+  const lightboxImg  = document.getElementById('lightbox-img');
+  const lightboxClose = document.getElementById('lightbox-close');
+
+  function openLightbox(src, alt) {
+    lightboxImg.src = src;
+    lightboxImg.alt = alt || '';
+    lightbox.classList.add('open');
+  }
+  function closeLightbox() {
+    lightbox.classList.remove('open');
+    lightboxImg.src = '';
+  }
+
+  lightboxClose.addEventListener('click', closeLightbox);
+  lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+  // delegate thumbnail clicks on dynamically rendered rows
+  document.addEventListener('click', e => {
+    if (e.target.classList.contains('nb-thumb')) {
+      openLightbox(e.target.src, e.target.alt);
+    }
+  });
+
+  // ── main ──
+  const dropZone   = document.getElementById('drop-zone');
+  const fileInput  = document.getElementById('file-input');
+  const analyseBtn = document.getElementById('analyse-btn');
+  const resultArea = document.getElementById('result-area');
+  const previewImg  = document.getElementById('preview-img');
+  let selectedFile  = null;
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+  function setFile(file) {
+    selectedFile = file;
+    analyseBtn.disabled = false;
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewImg.src = e.target.result;
+      dropZone.classList.add('has-image');
+    };
+    reader.readAsDataURL(file);
+    resultArea.innerHTML = '';
+  }
+
+  analyseBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    analyseBtn.disabled = true;
+    analyseBtn.innerHTML = '<span class="spinner"></span> Analysing…';
+    resultArea.innerHTML = '';
+
+    const fd = new FormData();
+    fd.append('image', selectedFile);
+
+    try {
+      const res  = await fetch('/api/check', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      resultArea.innerHTML = renderResult(data);
+    } catch (err) {
+      resultArea.innerHTML = `<div class="error-card">⚠️ ${err.message}</div>`;
+    } finally {
+      analyseBtn.disabled = false;
+      analyseBtn.innerHTML = '<span>⚡</span> Analyse';
+    }
+  });
+
+  function mimeFromFilename(fn) {
+    const ext = (fn.split('.').pop() || 'jpg').toLowerCase();
+    return (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : `image/${ext}`;
+  }
+
+  function thumbHtml(n) {
+    if (!n.image_b64) return '';
+    return `<img class="nb-thumb" src="data:${mimeFromFilename(n.filename)};base64,${n.image_b64}" alt="${n.filename}" loading="lazy" />`;
+  }
+
+  function renderResult(d) {
+    const isKO = d.verdict === 'KO';
+    const cls  = isKO ? 'ko' : 'ok';
+    const icon = isKO ? '❌' : '✅';
+
+    const defectsHTML = (d.defects && d.defects.length)
+      ? d.defects.map(x => `<span class="defect-chip">${x}</span>`).join('')
+      : (isKO ? '<span class="defect-chip">unknown defect</span>' : '');
+
+    const koNb = (d.ko_neighbours || []).map(n => `
+      <div class="neighbour-row">
+        ${thumbHtml(n)}
+        <span class="star">${n.above_threshold ? '★' : ' '}</span>
+        <span class="nb-label">${n.defect_label}</span>
+        <span class="nb-file">${n.filename}</span>
+        <span class="nb-score" style="color:${n.above_threshold ? 'var(--ko-red)' : '#ffffff'}">${n.score.toFixed(4)}</span>
+      </div>`).join('');
+
+    const okNb = (d.ok_neighbours || []).map(n => `
+      <div class="neighbour-row">
+        ${thumbHtml(n)}
+        <span class="star"> </span>
+        <span class="nb-label" style="color:var(--ok-green)">OK</span>
+        <span class="nb-file">${n.filename}</span>
+        <span class="nb-score" style="color:var(--ok-green)">${n.score.toFixed(4)}</span>
+      </div>`).join('');
+
+    return `
+    <div class="result-card ${cls}">
+      <div class="verdict-row">
+        <span class="verdict-badge ${cls}">${icon} ${d.verdict}</span>
+        <span class="verdict-label">${isKO ? 'Defective transistor detected' : 'Transistor looks good'}</span>
+      </div>
+      ${defectsHTML ? `<div class="defects-row">${defectsHTML}</div>` : ''}
+      ${koNb ? `<details><summary>KO neighbours (${d.ko_neighbours.length})</summary><div class="neighbour-list">${koNb}</div></details>` : ''}
+      ${okNb ? `<details><summary>OK neighbours (${d.ok_neighbours.length})</summary><div class="neighbour-list">${okNb}</div></details>` : ''}
+    </div>`;
+  }
+</script>
+</body>
+</html>
